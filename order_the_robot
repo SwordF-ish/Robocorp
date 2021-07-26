@@ -1,0 +1,98 @@
+*** Settings ***
+Documentation     Orders robots from RobotSpareBin Industries Inc.
+...               Saves the order HTML receipt as a PDF file.
+...               Saves the screenshot of the ordered robot.
+...               Embeds the screenshot of the robot to the PDF receipt.
+...               Creates ZIP archive of the receipts and the images.
+Library           RPA.Browser.Selenium
+Library           RPA.Robocloud.Secrets
+Library           RPA.HTTP
+Library           RPA.Tables
+Library           RPA.PDF
+Library           RPA.Desktop
+Library           RPA.Archive
+Library           RPA.Dialogs
+
+*** Keywords ***
+Open the robot order website
+    Open Available Browser    https://robotsparebinindustries.com/#/robot-order
+    
+*** Keywords ***
+Close the annoying modal
+    Click Element If Visible    xpath://button[normalize-space()='OK']
+    
+*** Keywords ***
+Get orders
+    ${sec}=    Get Secret    robotorder_info
+    Open Available Browser      ${sec}[order_url]
+    Wait Until Page Contains Element    xpath://button[normalize-space()='OK']
+    
+*** Keywords *** 
+Fill the form
+    [Arguments]     ${order}
+    Select From List By Value     xpath://select[@id='head']       ${order}[Head]
+    Click Element When Visible    xpath://input[@id='id-body-${order}[Body]'] 
+    RPA.Desktop.Press Keys    tab
+    Type Text    ${order}[Legs]
+    Input Text                    xpath://input[@id='address']    ${order}[Address]  
+    
+    *** Keywords *** 
+Preview the robot
+    Click Button When Visible     xpath://button[normalize-space()='Preview']
+
+*** Keywords ***
+Submit the order
+    Click Button When Visible         xpath://button[normalize-space()='Order']  
+    Wait Until Element Is Visible     xpath://div[@id='receipt']
+
+*** Keywords ***
+Store the receipt as a PDF file
+    [Arguments]    ${order_number}
+    Wait Until Element Is Visible    xpath://div[@id='receipt']
+    ${receipt_html}=    Get Element Attribute    xpath://div[@id='receipt']    outerHTML
+    Html To Pdf    ${receipt_html}    ${CURDIR}${/}receipts${/}Order-${order_number}.pdf
+    [Return]    ${CURDIR}${/}receipts${/}Order-${order_number}.pdf
+
+*** Keywords ***
+Take a screenshot of the robot
+    [Arguments]    ${order_number}
+    Click Element When Visible    xpath://img[@alt='Head']
+    Click Element When Visible    xpath://img[@alt='Body']
+    Click Element When Visible    xpath://img[@alt='Legs']
+    Capture Element Screenshot    xpath://div[@id='robot-preview-image']  ${OUTPUT_DIR}${/}Image${/}Image-${order_number}.png
+    [Return]    ${OUTPUT_DIR}${/}Image${/}Image-${order_number}.png
+
+*** Keywords ***
+Embed the robot screenshot to the reciept PDF file
+    [Arguments]   ${ss}    ${p}
+    Open Pdf    ${p}
+    Add Watermark Image To Pdf    ${ss}    ${p}
+    Close Pdf    ${p}
+
+*** Keywords ***
+Go to order another robot
+    Click Button When Visible     xpath://button[normalize-space()='Order another robot']
+    
+*** Keywords ***
+Create a ZIP file of the receipts
+    Archive Folder With Zip    ${OUTPUT_DIR}${/}receipts    ${OUTPUT_DIR}${/}Orders.zip
+    
+*** Tasks ***
+Order robots from RobotSpareBin Industries Inc
+    Open the robot order website
+    ${orders}=    Get orders
+    Close the annoying modal
+    FOR    ${row}    IN    @{orders}
+        Close the annoying modal
+        Fill the form    ${row}
+        Preview the robot
+        Submit the order
+        ${pdf}=    Store the receipt as a PDF file    ${row}[Order number]
+        ${screenshot}=    Take a screenshot of the robot    ${row}[Order number]
+        Embed the robot screenshot to the reciept PDF file    ${screenshot}    ${pdf}
+        Go to order another robot
+    END
+    Create a ZIP file of the receipts
+    
+    
+    
